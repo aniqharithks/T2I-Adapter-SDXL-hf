@@ -31,22 +31,40 @@ def create_demo(model: Model) -> gr.Blocks:
         adapter_conditioning_factor: float = 1.0,
         seed: int = 0,
         apply_preprocess: bool = True,
+        iterations: int = 1,
         progress=gr.Progress(track_tqdm=True),
     ) -> list[PIL.Image.Image]:
         prompt, negative_prompt = apply_style(style_name, prompt, negative_prompt)
 
-        return model.run(
-            image=image,
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            adapter_name=adapter_name,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            adapter_conditioning_scale=adapter_conditioning_scale,
-            adapter_conditioning_factor=adapter_conditioning_factor,
-            seed=seed,
-            apply_preprocess=apply_preprocess,
-        )
+        result = []
+
+        for i in range(iterations):
+            image_in, image_out = model.run(
+                image=image,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                adapter_name=adapter_name,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                adapter_conditioning_scale=adapter_conditioning_scale,
+                adapter_conditioning_factor=adapter_conditioning_factor,
+                seed=seed,
+                apply_preprocess=apply_preprocess,
+            )
+
+            if i == 0:
+                result.append(image_in)
+                image = image_in
+                apply_preprocess = False
+            
+            result.append(image_out)
+
+            if seed < MAX_SEED:
+                seed += 1
+            else:
+                seed = 0
+
+        return result
 
     def process_example(
         image_url: str,
@@ -198,6 +216,13 @@ def create_demo(model: Model) -> gr.Blocks:
                         value=42,
                     )
                     randomize_seed = gr.Checkbox(label="Randomize seed", value=False)
+                    iterations = gr.Slider(
+                        label="Iterations",
+                        minimum=1,
+                        maximum=64,
+                        step=1,
+                        value=1,
+                    )
             with gr.Column():
                 result = gr.Gallery(label="Result", columns=2, height=600, object_fit="scale-down", show_label=False)
 
@@ -211,6 +236,7 @@ def create_demo(model: Model) -> gr.Blocks:
                 adapter_conditioning_scale,
                 seed,
                 apply_preprocess,
+                iterations,
             ],
             outputs=result,
             fn=process_example,
