@@ -40,7 +40,6 @@ def create_demo(model: Model) -> gr.Blocks:
             image = PIL.Image.new("RGB", (width, height), (0, 0, 0))
 
         prompt, negative_prompt = apply_style(style_name, prompt, negative_prompt)
-
         result = []
 
         for i in range(iterations):
@@ -61,7 +60,7 @@ def create_demo(model: Model) -> gr.Blocks:
                 result.append(image_in)
                 image = image_in
                 apply_preprocess = False
-            
+
             result.append(image_out)
 
             if seed < MAX_SEED:
