@@ -6,7 +6,7 @@ import gradio as gr
 import PIL.Image
 from diffusers.utils import load_image
 
-from model import ADAPTER_NAMES, Model
+from model import ADAPTER_NAMES, Model, SD_XL_BASE_RATIOS
 from utils import (
     DEFAULT_STYLE_NAME,
     MAX_SEED,
@@ -32,8 +32,13 @@ def create_demo(model: Model) -> gr.Blocks:
         seed: int = 0,
         apply_preprocess: bool = True,
         iterations: int = 1,
+        width: int = 1,
+        height: int = 1,
         progress=gr.Progress(track_tqdm=True),
     ) -> list[PIL.Image.Image]:
+        if image is None:
+            image = PIL.Image.new("RGB", (width, height), (0, 0, 0))
+
         prompt, negative_prompt = apply_style(style_name, prompt, negative_prompt)
 
         result = []
@@ -87,6 +92,34 @@ def create_demo(model: Model) -> gr.Blocks:
             seed=seed,
             apply_preprocess=apply_preprocess,
         )
+
+    def update_height(width: int, height: int) -> int:
+        closest_height = height
+        min_difference = float("inf")
+
+        for w, h in SD_XL_BASE_RATIOS.values():
+            if w == width:
+                difference = abs(height - h)
+
+                if difference < min_difference:
+                    closest_height = h
+                    min_difference = difference
+
+        return closest_height
+
+    def update_width(width: int, height: int) -> int:
+        closest_width = width
+        min_difference = float("inf")
+
+        for w, h in SD_XL_BASE_RATIOS.values():
+            if h == height:
+                difference = abs(width - w)
+
+                if difference < min_difference:
+                    closest_width = w
+                    min_difference = difference
+
+        return closest_width
 
     examples = [
         [
@@ -223,6 +256,20 @@ def create_demo(model: Model) -> gr.Blocks:
                         step=1,
                         value=1,
                     )
+                    width = gr.Slider(
+                        label="Width",
+                        minimum=704,
+                        maximum=1728,
+                        step=64,
+                        value=1024,
+                    )
+                    height = gr.Slider(
+                        label="Height",
+                        minimum=576,
+                        maximum=1408,
+                        step=64,
+                        value=1024,
+                    )
             with gr.Column():
                 result = gr.Gallery(label="Result", columns=2, height=600, object_fit="scale-down", show_label=False)
 
@@ -237,6 +284,8 @@ def create_demo(model: Model) -> gr.Blocks:
                 seed,
                 apply_preprocess,
                 iterations,
+                width,
+                height,
             ],
             outputs=result,
             fn=process_example,
@@ -291,6 +340,18 @@ def create_demo(model: Model) -> gr.Blocks:
             inputs=inputs,
             outputs=result,
             api_name="run",
+        )
+        width.input(
+            fn=update_height,
+            inputs=width,
+            outputs=height,
+            api_name=False,
+        )
+        height.input(
+            fn=update_width,
+            inputs=height,
+            outputs=width,
+            api_name=False,
         )
 
     return demo
