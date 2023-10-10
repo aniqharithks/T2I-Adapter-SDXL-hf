@@ -1,6 +1,7 @@
 import gc
 import os
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 import numpy as np
 import PIL.Image
@@ -19,6 +20,8 @@ from diffusers import (
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
 )
+
+from utils import MAX_SEED
 
 SD_XL_BASE_RATIOS = {
     "0.5": (704, 1408),
@@ -343,7 +346,8 @@ class Model:
         adapter_conditioning_factor: float = 1.0,
         seed: int = 0,
         apply_preprocess: bool = True,
-    ) -> list[PIL.Image.Image]:
+        iterations: int = 1,
+    ) -> tuple[dict, list[dict]]:
         if not torch.cuda.is_available():
             raise RuntimeError("This demo does not work on CPU.")
         if num_inference_steps > self.MAX_NUM_INFERENCE_STEPS:
@@ -360,15 +364,33 @@ class Model:
 
         image = resize_to_closest_aspect_ratio(image)
 
-        generator = torch.Generator(device=self.device).manual_seed(seed)
-        out = self.pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            image=image,
-            num_inference_steps=num_inference_steps,
-            adapter_conditioning_scale=adapter_conditioning_scale,
-            adapter_conditioning_factor=adapter_conditioning_factor,
-            generator=generator,
-            guidance_scale=guidance_scale,
-        ).images[0]
-        return [image, out]
+        input_image = {
+            "image": image,
+            "time": datetime.now().strftime("%Y%m%d%H%M%S"),
+        }
+
+        output_images = []
+
+        for i in range(iterations):
+            generator = torch.Generator(device=self.device).manual_seed(seed)
+            output_images.append({
+                "image": self.pipe(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    image=image,
+                    num_inference_steps=num_inference_steps,
+                    adapter_conditioning_scale=adapter_conditioning_scale,
+                    adapter_conditioning_factor=adapter_conditioning_factor,
+                    generator=generator,
+                    guidance_scale=guidance_scale,
+                ).images[0],
+                "time": datetime.now().strftime("%Y%m%d%H%M%S"),
+                "seed": seed,
+            })
+
+            if seed < MAX_SEED:
+                seed += 1
+            else:
+                seed = 0
+
+        return input_image, output_images

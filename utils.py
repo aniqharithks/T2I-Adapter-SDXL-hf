@@ -65,7 +65,8 @@ DEFAULT_STYLE_NAME = "Photographic"
 
 def apply_style(style_name: str, positive: str, negative: str = "") -> tuple[str, str]:
     p, n = styles.get(style_name, styles[DEFAULT_STYLE_NAME])
-    return p.replace("{prompt}", positive), n + negative
+    negative = negative.strip()
+    return p.replace("{prompt}", positive.strip()), n + (", " if n and negative else "") + negative
 
 
 def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
