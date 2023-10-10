@@ -32,43 +32,45 @@ def create_demo(model: Model) -> gr.Blocks:
         seed: int = 0,
         apply_preprocess: bool = True,
         iterations: int = 1,
-        width: int = 1,
-        height: int = 1,
+        width: int = 1024,
+        height: int = 1024,
         progress=gr.Progress(track_tqdm=True),
-    ) -> list[PIL.Image.Image]:
+    ) -> tuple[list[dict], list[PIL.Image.Image], str]:
         if image is None:
             image = PIL.Image.new("RGB", (width, height), (0, 0, 0))
 
         prompt, negative_prompt = apply_style(style_name, prompt, negative_prompt)
-        result = []
 
-        for i in range(iterations):
-            image_in, image_out = model.run(
-                image=image,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                adapter_name=adapter_name,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                adapter_conditioning_scale=adapter_conditioning_scale,
-                adapter_conditioning_factor=adapter_conditioning_factor,
-                seed=seed,
-                apply_preprocess=apply_preprocess,
-            )
+        input_image, output_images = model.run(
+            image=image,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            adapter_name=adapter_name,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            adapter_conditioning_scale=adapter_conditioning_scale,
+            adapter_conditioning_factor=adapter_conditioning_factor,
+            seed=seed,
+            apply_preprocess=apply_preprocess,
+            iterations=iterations,
+        )
 
-            if i == 0:
-                result.append(image_in)
-                image = image_in
-                apply_preprocess = False
+        result = [input_image] + output_images
+        images = [i["image"] for i in result]
 
-            result.append(image_out)
-
-            if seed < MAX_SEED:
-                seed += 1
-            else:
-                seed = 0
-
-        return result
+        return result, images, f"""# Batch Information\n
+**Prompt**<br>{prompt}\n
+**Negative prompt**<br>{negative_prompt}\n
+**Adapter**<br>{adapter_name}\n
+**Style**<br>{style_name}\n
+**Steps**<br>{num_inference_steps}\n
+**Guidance scale**<br>{guidance_scale}\n
+**Adapter conditioning scale**<br>{adapter_conditioning_scale}\n
+**Adapter conditioning factor**<br>{adapter_conditioning_factor}\n
+**Preprocess**<br>{apply_preprocess}\n
+**Iterations**<br>{iterations}\n
+**Width**<br>{images[0].width}\n
+**Height**<br>{images[0].height}"""
 
     def process_example(
         image_url: str,
@@ -78,7 +80,7 @@ def create_demo(model: Model) -> gr.Blocks:
         adapter_conditioning_scale: float,
         seed: int,
         apply_preprocess: bool,
-    ) -> list[PIL.Image.Image]:
+    ) -> tuple[list[dict], list[PIL.Image.Image], str]:
         image = load_image(image_url)
         return run(
             image=image,
@@ -91,6 +93,12 @@ def create_demo(model: Model) -> gr.Blocks:
             seed=seed,
             apply_preprocess=apply_preprocess,
         )
+
+    def display_image_information(images: list[dict], evt: gr.SelectData) -> str:
+        image = images[evt.index]
+        return f"""# Image Information\n
+**Time**<br>{image["time"]}\n
+**Seed**<br>{image["seed"] if "seed" in image else "*Input image*"}"""
 
     def update_height(width: int, height: int) -> int:
         closest_height = height
@@ -209,7 +217,7 @@ def create_demo(model: Model) -> gr.Blocks:
                     apply_preprocess = gr.Checkbox(label="Apply preprocess", value=True)
                     negative_prompt = gr.Textbox(
                         label="Negative prompt",
-                        value=" extra digit, fewer digits, cropped, worst quality, low quality, glitch, deformed, mutated, ugly, disfigured",
+                        value="extra digit, fewer digits, cropped, worst quality, low quality, glitch, deformed, mutated, ugly, disfigured",
                     )
                     num_inference_steps = gr.Slider(
                         label="Number of steps",
@@ -250,7 +258,7 @@ def create_demo(model: Model) -> gr.Blocks:
                     randomize_seed = gr.Checkbox(label="Randomize seed", value=False)
                     iterations = gr.Slider(
                         label="Iterations",
-                        minimum=1,
+                        minimum=0,
                         maximum=64,
                         step=1,
                         value=1,
@@ -270,7 +278,10 @@ def create_demo(model: Model) -> gr.Blocks:
                         value=1024,
                     )
             with gr.Column():
+                images = gr.State()
                 result = gr.Gallery(label="Result", columns=2, height=600, object_fit="scale-down", show_label=False)
+                batch_information = gr.Markdown()
+                image_information = gr.Markdown()
 
         gr.Examples(
             examples=examples,
@@ -282,11 +293,12 @@ def create_demo(model: Model) -> gr.Blocks:
                 adapter_conditioning_scale,
                 seed,
                 apply_preprocess,
-                iterations,
-                width,
-                height,
             ],
-            outputs=result,
+            outputs=[
+                images,
+                result,
+                batch_information,
+            ],
             fn=process_example,
             cache_examples=CACHE_EXAMPLES,
         )
@@ -303,6 +315,14 @@ def create_demo(model: Model) -> gr.Blocks:
             adapter_conditioning_factor,
             seed,
             apply_preprocess,
+            iterations,
+            width,
+            height,
+        ]
+        outputs = [
+            images,
+            result,
+            batch_information,
         ]
         prompt.submit(
             fn=randomize_seed_fn,
@@ -313,7 +333,7 @@ def create_demo(model: Model) -> gr.Blocks:
         ).then(
             fn=run,
             inputs=inputs,
-            outputs=result,
+            outputs=outputs,
             api_name=False,
         )
         negative_prompt.submit(
@@ -325,7 +345,7 @@ def create_demo(model: Model) -> gr.Blocks:
         ).then(
             fn=run,
             inputs=inputs,
-            outputs=result,
+            outputs=outputs,
             api_name=False,
         )
         run_button.click(
@@ -337,18 +357,24 @@ def create_demo(model: Model) -> gr.Blocks:
         ).then(
             fn=run,
             inputs=inputs,
-            outputs=result,
+            outputs=outputs,
             api_name="run",
+        )
+        result.select(
+            fn=display_image_information,
+            inputs=images,
+            outputs=image_information,
+            api_name=False,
         )
         width.input(
             fn=update_height,
-            inputs=width,
+            inputs=[width, height],
             outputs=height,
             api_name=False,
         )
         height.input(
             fn=update_width,
-            inputs=height,
+            inputs=[width, height],
             outputs=width,
             api_name=False,
         )
