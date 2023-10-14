@@ -38,6 +38,7 @@ def create_demo(model: Model) -> gr.Blocks:
     ) -> tuple[list[dict], list[PIL.Image.Image], str]:
         if image is None:
             image = PIL.Image.new("RGB", (width, height), (0, 0, 0))
+            apply_preprocess = False
 
         prompt, negative_prompt = apply_style(style_name, prompt, negative_prompt)
 
