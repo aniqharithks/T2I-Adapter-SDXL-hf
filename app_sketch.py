@@ -29,6 +29,8 @@ def create_demo(model: Model) -> gr.Blocks:
         iterations: int = 1,
         progress=gr.Progress(track_tqdm=True),
     ) -> tuple[list[dict], list[PIL.Image.Image], str]:
+        if image is None:
+            image = PIL.Image.new("L", (1024, 1024), 255)
         image = image.convert("RGB")
         image = TF.to_tensor(image) > 0.5
         image = TF.to_pil_image(image.to(torch.float32))
